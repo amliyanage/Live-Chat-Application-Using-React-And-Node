@@ -6,6 +6,8 @@ import type {
   User,
 } from "./types.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
+import EmojiPicker, { Theme, type EmojiClickData } from "emoji-picker-react";
+import "./EmojiPicker.css";
 
 interface ChatRoomProps {
   socket: Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -18,8 +20,11 @@ const ChatRoom = ({ socket, username, roomId }: ChatRoomProps) => {
   const [users, setUsers] = useState<User[]>([]);
   const [inputMessage, setInputMessage] = useState<string>("");
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<number | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Scroll to bottom when messages change
   const scrollToBottom = () => {
@@ -79,6 +84,35 @@ const ChatRoom = ({ socket, username, roomId }: ChatRoomProps) => {
     };
   }, [socket, roomId, username]);
 
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target as Node)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    if (showEmojiPicker) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showEmojiPicker]);
+
+  const handleEmojiClick = (emojiData: EmojiClickData) => {
+    setInputMessage((prev) => prev + emojiData.emoji);
+    inputRef.current?.focus();
+  };
+
+  const toggleEmojiPicker = () => {
+    setShowEmojiPicker((prev) => !prev);
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputMessage(e.target.value);
 
@@ -96,6 +130,12 @@ const ChatRoom = ({ socket, username, roomId }: ChatRoomProps) => {
     }, 1000);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      setShowEmojiPicker(false);
+    }
+  };
+
   const handleSendMessage = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
@@ -110,6 +150,7 @@ const ChatRoom = ({ socket, username, roomId }: ChatRoomProps) => {
         socket.emit("send-message", message);
         setInputMessage("");
         socket.emit("stop-typing", roomId, username);
+        setShowEmojiPicker(false); // Close emoji picker when sending message
 
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current);
@@ -401,30 +442,61 @@ const ChatRoom = ({ socket, username, roomId }: ChatRoomProps) => {
             padding: "10px 20px",
             backgroundColor: "#202c33",
             borderTop: "1px solid #2a3942",
+            position: "relative",
           }}
         >
+          {/* Emoji Picker */}
+          {showEmojiPicker && (
+            <div
+              ref={emojiPickerRef}
+              style={{
+                position: "absolute",
+                bottom: "70px",
+                left: "20px",
+                zIndex: 1000,
+              }}
+            >
+              <EmojiPicker
+                onEmojiClick={handleEmojiClick}
+                theme={Theme.DARK}
+                searchPlaceHolder="Search emoji..."
+                width={350}
+                height={450}
+                previewConfig={{ showPreview: false }}
+                skinTonesDisabled={false}
+                autoFocusSearch={false}
+                lazyLoadEmojis={true}
+              />
+            </div>
+          )}
+
           <form
             onSubmit={handleSendMessage}
             style={{ display: "flex", gap: "10px", alignItems: "center" }}
           >
             <button
               type="button"
+              onClick={toggleEmojiPicker}
               style={{
                 padding: "10px",
                 backgroundColor: "transparent",
                 border: "none",
                 cursor: "pointer",
                 fontSize: "24px",
-                color: "#8696a0",
+                color: showEmojiPicker ? "#00a884" : "#8696a0",
+                transition: "color 0.2s",
               }}
+              title="Add emoji"
             >
               😊
             </button>
             <input
+              ref={inputRef}
               type="text"
               placeholder="Type a message"
               value={inputMessage}
               onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
               style={{
                 flex: 1,
                 padding: "10px 15px",
